@@ -25,10 +25,12 @@ import net.minecraft.client.render.model.BakedModel;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.BlockRenderView;
 import net.minecraft.util.math.random.Random;
+import net.minecraft.world.BlockRenderView;
 
 import net.fabricmc.fabric.api.renderer.v1.Renderer;
+import net.fabricmc.fabric.api.renderer.v1.render.BlockRenderContext;
+import net.fabricmc.fabric.api.renderer.v1.render.ItemRenderContext;
 import net.fabricmc.fabric.api.renderer.v1.render.RenderContext;
 
 /**
@@ -52,7 +54,28 @@ public interface FabricBakedModel {
 	 * Enhanced models that use this API should return false,
 	 * otherwise the API will not recognize the model.
 	 */
-	boolean isVanillaAdapter();
+	default boolean isVanillaAdapter() {
+		return true;
+	}
+
+	default void emitBlockQuads(BlockRenderContext blockContext) {
+		if (isVanillaAdapter()) {
+			blockContext.bakedModelConsumer().accept((BakedModel) this, blockContext.blockState());
+		} else {
+			// Forward to old method
+			// blockContext::random allocates, but this is the legacy path so probably not too bad?
+			emitBlockQuads(blockContext.blockView(), blockContext.blockState(), blockContext.blockPos(), blockContext::random, blockContext);
+		}
+	}
+
+	default void emitItemQuads(ItemRenderContext itemContext) {
+		if (isVanillaAdapter()) {
+			itemContext.bakedModelConsumer().accept((BakedModel) this, null);
+		} else {
+			// Forward to old method
+			emitItemQuads(itemContext.itemStack(), itemContext::random, itemContext);
+		}
+	}
 
 	/**
 	 * This method will be called during chunk rebuilds to generate both the static and
@@ -95,7 +118,20 @@ public interface FabricBakedModel {
 	 * Will not be thread-safe. Do not cache or retain a reference.
 	 * @param context Accepts model output.
 	 */
-	void emitBlockQuads(BlockRenderView blockView, BlockState state, BlockPos pos, Supplier<Random> randomSupplier, RenderContext context);
+	@Deprecated
+	default void emitBlockQuads(BlockRenderView blockView, BlockState state, BlockPos pos, Supplier<Random> randomSupplier, RenderContext context) {
+		// Forward to new override
+		if (context instanceof BlockRenderContext blockContext) {
+			if (state == blockContext.blockState()) {
+				emitBlockQuads(blockContext);
+			} else {
+				// Take possible block state change into account
+				blockContext.pushBlockState(state);
+				emitBlockQuads(blockContext);
+				blockContext.popBlockState();
+			}
+		}
+	}
 
 	/**
 	 * This method will be called during item rendering to generate both the static and
@@ -124,5 +160,13 @@ public interface FabricBakedModel {
 	 * logic here, instead of returning every possible shape from {@link BakedModel#getOverrides}
 	 * as vanilla baked models.
 	 */
-	void emitItemQuads(ItemStack stack, Supplier<Random> randomSupplier, RenderContext context);
+	@Deprecated
+	default void emitItemQuads(ItemStack stack, Supplier<Random> randomSupplier, RenderContext context) {
+		// Forward to new override
+		if (context instanceof ItemRenderContext itemContext) {
+			emitItemQuads(itemContext);
+
+			// Should we attempt to push the stack if it changed? Probably not...
+		}
+	}
 }
