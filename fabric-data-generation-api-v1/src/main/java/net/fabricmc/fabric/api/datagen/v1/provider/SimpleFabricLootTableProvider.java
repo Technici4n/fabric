@@ -17,17 +17,21 @@
 package net.fabricmc.fabric.api.datagen.v1.provider;
 
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.BiConsumer;
 
-import org.jetbrains.annotations.ApiStatus;
-
+import net.minecraft.data.DataWriter;
+import net.minecraft.loot.LootTable;
 import net.minecraft.loot.context.LootContextType;
 import net.minecraft.loot.context.LootContextTypes;
+import net.minecraft.util.Identifier;
 
 import net.fabricmc.fabric.api.datagen.v1.FabricDataGenerator;
 import net.fabricmc.fabric.api.datagen.v1.FabricDataOutput;
+import net.fabricmc.fabric.impl.datagen.loot.LootTableProviderImpl;
 
 /**
- * Extend this class and implement {@link java.util.function.Consumer#accept}. Register an instance of the class with {@link FabricDataGenerator.Pack#addProvider} in a {@link net.fabricmc.fabric.api.datagen.v1.DataGeneratorEntrypoint}.
+ * Extend this class and implement {@link #accept}. Register an instance of the class with {@link FabricDataGenerator.Pack#addProvider} in a {@link net.fabricmc.fabric.api.datagen.v1.DataGeneratorEntrypoint}.
  */
 public abstract class SimpleFabricLootTableProvider implements FabricLootTableProvider {
 	protected final FabricDataOutput output;
@@ -38,16 +42,14 @@ public abstract class SimpleFabricLootTableProvider implements FabricLootTablePr
 		this.lootContextType = lootContextType;
 	}
 
-	@ApiStatus.Internal
-	@Override
-	public final LootContextType getLootContextType() {
-		return lootContextType;
-	}
+	/**
+	 * Implement this method to add loot tables by offering them to the consumer.
+	 */
+	public abstract void accept(BiConsumer<Identifier, LootTable.Builder> consumer);
 
-	@ApiStatus.Internal
 	@Override
-	public final FabricDataOutput getFabricDataOutput() {
-		return output;
+	public CompletableFuture<?> run(DataWriter writer) {
+		return LootTableProviderImpl.run(writer, this::accept, lootContextType, output);
 	}
 
 	@Override
